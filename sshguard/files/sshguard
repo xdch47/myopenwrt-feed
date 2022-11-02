@@ -1,0 +1,115 @@
+#!/bin/sh
+# sshguard -- protect hosts from brute-force attacks
+
+libexec="/usr/lib"
+version="2.4.2"
+
+err() {
+    echo "sshguard: $1" >&2
+}
+
+setflag() {
+    if [ -n "$2" ]; then
+        flags="$flags -$1 $2"
+    fi
+}
+
+usage() {
+    cat << EOF
+Usage: sshguard [-v] [-h]
+[-a BLACKLIST-THRESHOLD] [-b BLACKLIST-FILE]
+[-i PID-FILE] [-p BLOCK_TIME]
+[-s DETECTION_TIME] [-w IP-ADDRESS | WHITELIST-FILE]
+EOF
+}
+
+# Source configuration file
+config="/etc/sshguard.conf"
+if [ ! -r $config ]; then
+    err "Could not read '$config'"
+    err "Please configure SSHGuard."
+    exit 78
+fi
+
+. $config
+
+# Runtime arguments override configuration options
+while getopts "b:l:p:s:a:w:i:hv" opt; do
+    case $opt in
+        a) THRESHOLD=$OPTARG;;
+        b) BLACKLIST_FILE=$OPTARG;;
+        i) PID_FILE=$OPTARG;;
+        l) FILES="$FILES $OPTARG";;
+        p) BLOCK_TIME=$OPTARG;;
+        s) DETECTION_TIME=$OPTARG;;
+        w) WHITELIST_ARG="$WHITELIST_ARG $OPTARG";;
+        h) usage; exit;;
+        v) echo "SSHGuard $version"; exit;;
+        *) echo "Try 'sshguard -h' for help"; exit 1;;
+    esac
+done
+
+# Check backend
+if [ -z "$BACKEND" ]; then
+    err "BACKEND must be set in '$config'"
+    exit 78
+elif [ ! -x "$BACKEND" ]; then
+    err "'$BACKEND' is not executable"
+    exit 78
+fi
+
+# Read config in to flags
+setflag 'a' "$THRESHOLD"
+setflag 'b' "$BLACKLIST_FILE"
+setflag 'p' "$BLOCK_TIME"
+setflag 's' "$DETECTION_TIME"
+setflag 'N' "$IPV6_SUBNET"
+setflag 'n' "$IPV4_SUBNET"
+if [ -n "$WHITELIST_ARG" ]; then
+    for arg in $WHITELIST_ARG; do
+      flags="$flags -w $arg"
+    done
+elif [ -n "$WHITELIST_FILE" ]; then
+    flags="$flags -w $WHITELIST_FILE"
+fi
+
+# Log source selection order:
+#     runtime args, logreader and files, logreader, files, or stdin
+shift $((OPTIND-1))
+if [ $# -gt 0 ]; then
+    tailcmd="$libexec/sshg-logtail $@"
+elif [ -n "$LOGREADER" -a -n "$FILES" ]; then
+    LOGREADER="$LOGREADER | grep --line-buffered '^'"
+    FILESREAD="$libexec/sshg-logtail $FILES | grep --line-buffered '^'"
+    tailcmd="( $LOGREADER & $FILESREAD )"
+elif [ -n "$LOGREADER" ]; then
+    tailcmd="$LOGREADER"
+elif [ -n "$FILES" ]; then
+    tailcmd="$libexec/sshg-logtail $FILES"
+fi
+
+if [ -n "$PID_FILE" ]; then
+    if [ ! -e "$PID_FILE" ]; then
+        echo "$$" > $PID_FILE
+    else
+        err "$PID_FILE already exists; is SSHGuard already running?"
+        exit 1
+    fi
+fi
+
+
+# Select PARSER from configuration file or use default. Add POST_PARSER from
+# configuration file if it exists.
+RUN_PARSER=${PARSER:-$libexec/sshg-parser}
+if [ -n "$POST_PARSER" ]; then
+    RUN_PARSER="$RUN_PARSER | $POST_PARSER"
+fi
+
+#fifo=/tmp/sshguard-$$.pipe
+#mkfifo $fifo
+#eval "$RUN_PARSER | $libexec/sshg-blocker $flags | $BACKEND" < $fifo &
+#exec 1> $fifo
+#rm $fifo
+#exec $tailcmd
+
+$RUN_PARSER | $libexec/sshg-blocker $flags | $BACKEND

@@ -1,0 +1,15 @@
+# enable 3.x mode
+@version:3.0
+
+# pass only entries with auth+authpriv facilities from programs other than sshguard
+filter f_sshguard { facility(auth, authpriv) and not program("sshguard"); };
+
+# pass entries built with this format
+destination sshguard {
+	program("/usr/sbin/sshguard"
+	template("$DATE $FULLHOST $MSGHDR$MESSAGE\n")
+	);
+};
+
+log { source(src); filter(f_sshguard); destination(sshguard); };
+

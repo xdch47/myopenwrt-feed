@@ -1,0 +1,25 @@
+From 96609a7e64499ff12afb4c95f5804f3fe6799903 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Felix=20Neum=C3=A4rker?= <xdch47@posteo.de>
+Date: Sun, 16 Oct 2022 21:26:09 +0200
+Subject: [PATCH] add compatibility for openwrt logd format
+
+---
+ src/parser/attack_scanner.l | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/parser/attack_scanner.l b/src/parser/attack_scanner.l
+index 7fef2a0..dacf92c 100644
+--- a/src/parser/attack_scanner.l
++++ b/src/parser/attack_scanner.l
+@@ -136,7 +136,7 @@ HTTP_LOGIN_200OK_BAD       .*({WORDPRESS_LOGIN}|{TYPO3_LOGIN}|{CONTAO_LOGIN}).*
+   */
+ 
+  /* handle entries with PID and without PID from processes other than sshguard */
+-({TIMESTAMP_SYSLOG}|{TIMESTAMP_ISO8601})[ ]+{FACLEVEL}?[ ]*([a-zA-Z0-9]|{WORD}|{HOSTADDR})[ ]+{PROCESSNAME}("/"{PROCESSNAME}){0,2}"["{NUMBER}"]":?" "{SOLARIS_MSGID_TAG}? {
++({TIMESTAMP_DM24H_Y}|{TIMESTAMP_SYSLOG}|{TIMESTAMP_ISO8601})[ ]+{FACLEVEL}?[ ]*([a-zA-Z0-9]|{WORD}|{HOSTADDR})[ ]+{PROCESSNAME}("/"{PROCESSNAME}){0,2}"["{NUMBER}"]":?" "{SOLARIS_MSGID_TAG}? {
+         /* extract PID */
+         yylval.num = getsyslogpid(yytext, yyleng);
+         return SYSLOG_BANNER_PID;
+-- 
+2.37.4
+
